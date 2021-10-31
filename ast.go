@@ -22,16 +22,24 @@ const (
 	tBinary
 )
 
+type SdlDebugLocation struct {
+	File       string
+	Line       string
+	Loc        int
+	LineNumber int
+}
+
 // SdlValue is a tagged union for every possible type representable in SDLang.
 type SdlValue struct {
-	tag       sdlValueTag
-	vString   string
-	vInt      int64
-	vFloat    float64
-	vDateTime time.Time
-	vTimeSpan time.Duration
-	vBool     bool
-	vBinary   []byte
+	tag           sdlValueTag
+	vString       string
+	vInt          int64
+	vFloat        float64
+	vDateTime     time.Time
+	vTimeSpan     time.Duration
+	vBool         bool
+	vBinary       []byte
+	DebugLocation SdlDebugLocation
 }
 
 // SdlAttribute is a Key-Value pair between a string and an SdlValue
@@ -46,7 +54,8 @@ type SdlAttribute struct {
 	QualifiedName string
 
 	// Value is the value.
-	Value SdlValue
+	Value         SdlValue
+	DebugLocation SdlDebugLocation
 }
 
 // SdlTag is a container consisting of a name; child tags; attributes, and values.
@@ -67,7 +76,8 @@ type SdlTag struct {
 	Attributes map[string]SdlAttribute
 
 	// Children contains the values of this tag. It is safe (and expected) to modify this value.
-	Values []SdlValue
+	Values        []SdlValue
+	DebugLocation SdlDebugLocation
 }
 
 // Null creates a null SdlValue
@@ -224,6 +234,9 @@ func (p SaxParser) ParseIntoAst() (SdlTag, error) {
 			break
 		}
 
+		dline, dloc, dln := p.getLine(p.cursor)
+		dbg := SdlDebugLocation{File: p.FileName, Line: dline, Loc: dloc, LineNumber: dln}
+
 		if p.IsTagName() {
 			if !prevWasNewLine {
 				return SdlTag{}, p.NewError(0, "(probably a bug) Tag names can only appear at the start of new lines.")
@@ -232,6 +245,7 @@ func (p SaxParser) ParseIntoAst() (SdlTag, error) {
 			tag.Name = p.Text()
 			tag.Namespace = p.AdditionalText()
 			tag.QualifiedName = p.AdditionalText() + ":" + p.Text()
+			tag.DebugLocation = dbg
 			if tag.QualifiedName[0] == ':' {
 				tag.QualifiedName = tag.QualifiedName[1:]
 			}
@@ -242,6 +256,7 @@ func (p SaxParser) ParseIntoAst() (SdlTag, error) {
 			attr.Name = p.Text()
 			attr.Namespace = p.AdditionalText()
 			attr.QualifiedName = p.AdditionalText() + ":" + p.Text()
+			attr.DebugLocation = dbg
 			if attr.QualifiedName[0] == ':' {
 				attr.QualifiedName = attr.QualifiedName[1:]
 			}
@@ -296,6 +311,7 @@ func (p SaxParser) ParseIntoAst() (SdlTag, error) {
 			prevWasNewLine = true
 		} else {
 			var val SdlValue
+			val.DebugLocation = dbg
 			handleValue(&val, &p)
 			currTagStack[len(currTagStack)-1].Values = append(currTagStack[len(currTagStack)-1].Values, val)
 			prevWasNewLine = false
